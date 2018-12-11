@@ -7,6 +7,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.patches import Rectangle 
 from scipy import signal
+from scipy.stats import multivariate_normal
 
 
 def calculate_velocity(player, freq = 25.0):
@@ -120,30 +121,95 @@ def plot_pitch():
     ax.add_patch(rect)
     plt.show()
 
+
+def wideopen_transfer_func(x, min_distance = 4.0, 
+                           max_distance = 10.0, cut_off = 18.0):
+    """Approximate transfer function from Bornn Figure 9.
+    
+        Calculate the player's pitch control surface radius.
+    
+        Args:
+            x: numpy array of x-values
+            min_distance: minimun distance of player's pitch control radius
+            max_distance: maximum distance of player's pitch control radius
+            cut_off: distance where max_distance is reached
+        Returns:
+            player's control surface radius
+    """
+    idx = x < cut_off
+    alpha = np.log(max_distance - min_distance + 1.0 )/cut_off
+    y = np.full_like(x, 0.0)
+    y[np.invert(idx)] = max_distance
+    y[idx] = min_distance - 1.0 + exp(alpha*x[idx])
+    return y
+
+
+def distance_player_2_ball(player, ball):
+    """Calculates the distance between the ball and the player.
+    
+        Args:
+            player: player DataFrame containing x and y values.
+            ball: ball DataFrame containing x and y values
+        Returns:
+            a pd.Series object.
+    """
+    return np.sqrt(np.sum((ball - player)**2, axis=1))
+    
+
 if __name__ == '__main__':
     #dat = pd.read_csv('test_data.csv')
     p1 = dat.iloc[:,:2]
     ball = dat[['ball_x','ball_y']]
+    ball.columns = ['x','y']
     p1.columns = ['x','y']
-    plt.clf()
+    #plt.clf()
     #plot_pitch()
     #plt.plot(p1.x, p1.y, 'y-')
     p1_v = calculate_velocity(p1)
-    #plt.plot(p1_v)
+    
     ## filter velocity
     p1_v_f = filter_velocity(p1_v, 2.)
-    #plt.plot(p1_v_f,'r--')
+    """
+    plt.plot(p1_v, label=['velocity-x','velocity-y'])
+    plt.plot(p1_v_f,'r--', 
+             label='velocity filtered')
+    plt.legend()
+    plt.show()
+    """
+    
     ## calculate the directional angle
     angle = calculate_angle_from_velocity(p1_v_f)
     ## calculate the velocity magnitude
     mag = calculate_velocity_magnitude(p1_v_f)
     #plt.plot(angle)
-    R = generate_rotation_2x2_matrix(angle[1])
-    S = generate_direction_2x2_matrix(*p1_v.iloc[1,:])
+    frame = 90
+    R_theta = generate_rotation_2x2_matrix(angle[frame])
+    S = generate_direction_2x2_matrix(*p1_v.iloc[frame,:])
     S_rat = calculate_S_rat_i(p1_v_f)
+    S_rat_i = S_rat[frame]
     ## Distance to ball
+    D_i_t = distance_player_2_ball(p1, ball)
     ## Transfer function
+    R_i_t =  wideopen_transfer_func(D_i_t[frame])
     ## Generate S_i_t
+    S_i_t = np.diag([R_i_t + R_i_t * S_rat_i, R_i_t - R_i_t * S_rat_i])
     ## Calculate covariance
+    cov = R_theta.dot(S_i_t).dot(S_i_t).dot(R_theta.transpose())
     ## calculate mu
-
+    p_i_t = p1.iloc[frame,:]
+    shat_i_t = p1_v_f.iloc[frame,:]
+    mu_i_t = p_i_t + shat_i_t * 0.5
+    px, py = np.mgrid[-52.5:52.5:0.5, -34:34:0.5]
+    # zeroing out all points which are too far away from the player
+    # according to ball distance
+    radius_idx = np.sqrt((px - mu_i_t.x)**2 + (py - mu_i_t.y)**2) > R_i_t
+    pos = np.empty(px.shape + (2,))
+    pos[:, :, 0] = px; pos[:, :, 1] = py
+    rv = multivariate_normal(mu_i_t, cov)
+    pz = rv.pdf(pos)
+    pz[radius_idx] = 0
+    plt.contourf(px, py, pz)
+    plt.colorbar()
+    plt.gca().axis('equal')
+    plt.show()
+    
