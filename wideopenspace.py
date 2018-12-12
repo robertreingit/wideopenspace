@@ -218,12 +218,13 @@ if __name__ == '__main__':
     ball.columns = ['x','y']
     plt.clf()
     plot_pitch(plt.gca())
+    pitch_x, pitch_y = np.mgrid[-55:55:0.5, -40:40:0.5]
+    pitch_grid = np.zeros(pitch_x.shape)
     frame = 90
     for i in [0,2,4,6,8,10,12,14,16,18,20]:
         player = dat.iloc[:,slice(i,i+2)]
         player.columns = ['x','y']
         player_v = calculate_velocity(player)
-        ## filter velocity
         player_v_f = filter_velocity(player_v, 2.)
         angle = calculate_angle_from_velocity(player_v_f)
         D_i_t = distance_player_2_ball(player, ball)
@@ -232,8 +233,15 @@ if __name__ == '__main__':
                 player_v_f.iloc[frame], angle[frame], D_i_t[frame])
     
         plot_player_influence(px, py, pz, mu_i_t, player_v_f.iloc[frame])
+        for i in range(px.shape[0]):
+            for j in range(px.shape[1]):
+                idx = np.where(np.logical_and(
+                    pitch_x == px[i,j],
+                    pitch_y == py[i,j]))
+                pitch_grid[idx] = pitch_grid[idx] + pz[i,j]
 
-    plt.plot(ball.x[frame], ball.y[frame], 'ro', markersize=5)
+    plt.plot(ball.x[frame], ball.y[frame], 'ro', markersize=5,
+            markeredgecolor='k')
     plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
     
