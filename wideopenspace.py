@@ -233,7 +233,7 @@ if __name__ == '__main__':
     plot_pitch(plt.gca())
     pitch_x, pitch_y = np.mgrid[-55:55:0.5, -40:40:0.5]
     pitch_grid = np.zeros(pitch_x.shape)
-    frame = 80
+    frame = 90
     no_set_pts = 0
     for i in [0,2,4,6,8,10,12,14,16,18,20]:
         player = dat.iloc[:,slice(i,i+2)]
