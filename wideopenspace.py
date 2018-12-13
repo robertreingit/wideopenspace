@@ -171,11 +171,21 @@ def plot_player_influence(px, py, pz, mu_i_t, p1_v_f):
     plt.arrow(mu_i_t.x, mu_i_t.y, p1_v_f.x, p1_v_f.y, color='r')
 
 
-def calculate_influence(pos_xy, vel_xy, angle, D_i_t, grid_size = 0.5):
+def calculate_influence(pos_xy, vel_xy, angle, D_i_t, grid_size = 0.5, pitch_length = 105.0, pitch_width = 68.0):
     """Calculates the players influence according to Fernandez & Born.
 
+        The function relies on the mid-point being the origin of the coordinate system.
+
         Args:
+            pos_xy: pd.DataFrame (1 row) with x-y-values.
+            vel_xy: pd.DataFrame (1 row) with x-y-values
+            D_i_t: distance to the ball
+            grid_size: distance between successive grid points
+            pitch_length: width of the pitch in units of pos_xy
+            pitch_width: width of the pitch in units of pos_xy
         Returns:
+            a tuple containing the grid points inf_x, inf_y, the influence probability and mu_i_t
+            of the player.
     """
     # Eq. 16
     R_theta = generate_rotation_2x2_matrix(angle)
@@ -191,25 +201,26 @@ def calculate_influence(pos_xy, vel_xy, angle, D_i_t, grid_size = 0.5):
     # Eq. 21 
     mu_i_t = pos_xy + vel_xy * 0.5
 
+    # pitch edge
+    x_edge = pitch_length / 2.0
+    y_edge = pitch_width / 2.0
     # determine necessary grid coordinates
-    grid_min = np.floor(mu_i_t - R_i_t)
-    grid_max = np.ceil(mu_i_t + R_i_t)
-    px, py = np.mgrid[slice(grid_min.x, grid_max.x, grid_size),
+    grid_min = np.maximum(np.floor(mu_i_t - R_i_t),np.array([-x_edge, -y_edge]))
+    grid_max = np.minimum(np.ceil(mu_i_t + R_i_t), np.array([x_edge, y_edge]) + grid_size)
+    inf_x, inf_y = np.mgrid[slice(grid_min.x, grid_max.x, grid_size),
             slice(grid_min.y, grid_max.y, grid_size)]
 
     # generate structure for pdf-calculation.
-    pos = np.empty(px.shape + (2,))
-    pos[:, :, 0] = px; pos[:, :, 1] = py
-    rv = multivariate_normal(mu_i_t, cov)
-    pz = rv.pdf(pos)
+    pos = np.empty(inf_x.shape + (2,))
+    pos[:, :, 0] = inf_x; pos[:, :, 1] = inf_y 
+    inf_z = multivariate_normal.pdf(pos, mean=mu_i_t, cov=cov)
 
     # zeroing out all points which are too far away from the player
-    # according to ball distance
-    radius_idx = np.sqrt((px - mu_i_t.x)**2 + (py - mu_i_t.y)**2) > R_i_t
-    pz[radius_idx] = 0
+    radius_idx = np.sqrt((inf_x - mu_i_t.x)**2 + (inf_y - mu_i_t.y)**2) > R_i_t
+    inf_z[radius_idx] = 0
     # normalize influence
-    pz = pz / np.sum(pz)
-    return px, py, pz, mu_i_t 
+    inf_z = inf_z / np.sum(inf_z)
+    return inf_x, inf_y, inf_z, mu_i_t 
 
 
 if __name__ == '__main__':
@@ -217,10 +228,13 @@ if __name__ == '__main__':
     ball = dat[['ball_x','ball_y']]
     ball.columns = ['x','y']
     plt.clf()
+    ax = plt.gcf().subplots(2,1)
+    plt.sca(ax[0])
     plot_pitch(plt.gca())
     pitch_x, pitch_y = np.mgrid[-55:55:0.5, -40:40:0.5]
     pitch_grid = np.zeros(pitch_x.shape)
-    frame = 90
+    frame = 80
+    no_set_pts = 0
     for i in [0,2,4,6,8,10,12,14,16,18,20]:
         player = dat.iloc[:,slice(i,i+2)]
         player.columns = ['x','y']
@@ -238,10 +252,15 @@ if __name__ == '__main__':
                 idx = np.where(np.logical_and(
                     pitch_x == px[i,j],
                     pitch_y == py[i,j]))
+                if np.any(idx):
+                    no_set_pts += 1
                 pitch_grid[idx] = pitch_grid[idx] + pz[i,j]
 
     plt.plot(ball.x[frame], ball.y[frame], 'ro', markersize=5,
             markeredgecolor='k')
     plt.gca().set_aspect('equal', adjustable='box')
+    plt.sca(ax[1])
+    plt.contourf(pitch_x, pitch_y, pitch_grid)
+    plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
-    
+    print('Set influence points: {0}'.format(no_set_pts))
