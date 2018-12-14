@@ -217,11 +217,20 @@ def calculate_influence(pos_xy, vel_xy, angle, D_i_t, grid_size = 0.5, pitch_len
 
     # zeroing out all points which are too far away from the player
     radius_idx = np.sqrt((inf_x - mu_i_t.x)**2 + (inf_y - mu_i_t.y)**2) > R_i_t
-    inf_z[radius_idx] = 0
+    inf_z[radius_idx] = 0.0
     # normalize influence
     inf_z = inf_z / np.sum(inf_z)
     return inf_x, inf_y, inf_z, mu_i_t 
 
+def sigmoid(x):
+    """Sigmoid function.
+
+        Args:
+            x: np.array of values
+        Returns:
+            f(x)
+    """
+    return 1.0 / (1.0 + np.exp(-x))
 
 if __name__ == '__main__':
     dat = pd.read_csv('test_data.csv')
@@ -231,7 +240,8 @@ if __name__ == '__main__':
     ax = plt.gcf().subplots(2,1)
     plt.sca(ax[0])
     plot_pitch(plt.gca())
-    pitch_x, pitch_y = np.mgrid[-55:55:0.5, -40:40:0.5]
+    grid_size = 0.25
+    pitch_x, pitch_y = np.mgrid[slice(-55,55, grid_size), slice(-40,40,0.5)]
     pitch_grid = np.zeros(pitch_x.shape)
     frame = 90
     no_set_pts = 0
@@ -244,7 +254,7 @@ if __name__ == '__main__':
         D_i_t = distance_player_2_ball(player, ball)
 
         px, py, pz, mu_i_t = calculate_influence(player.iloc[frame],
-                player_v_f.iloc[frame], angle[frame], D_i_t[frame])
+                player_v_f.iloc[frame], angle[frame], D_i_t[frame], grid_size = grid_size)
     
         plot_player_influence(px, py, pz, mu_i_t, player_v_f.iloc[frame])
         for i in range(px.shape[0]):
@@ -260,7 +270,8 @@ if __name__ == '__main__':
             markeredgecolor='k')
     plt.gca().set_aspect('equal', adjustable='box')
     plt.sca(ax[1])
-    plt.contourf(pitch_x, pitch_y, pitch_grid)
+    plt.contourf(pitch_x, pitch_y, sigmoid(pitch_grid))
     plt.gca().set_aspect('equal', adjustable='box')
+    plt.colorbar()
     plt.show()
     print('Set influence points: {0}'.format(no_set_pts))
